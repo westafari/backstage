@@ -19,6 +19,7 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { catalogServiceRef } from '@backstage/plugin-catalog-node';
+import { actionsServiceRef } from '@backstage/backend-plugin-api/alpha';
 
 import {
   type AuthenticationStrategy,
@@ -46,6 +47,7 @@ import {
 } from '@backstage/plugin-kubernetes-node';
 import { KubernetesRouter } from './service/KubernetesRouter';
 import { KubernetesInitializer } from './service/KubernetesInitializer';
+import { createKubernetesResources } from './actions';
 
 class ObjectsProvider implements KubernetesObjectsProviderExtensionPoint {
   private objectsProvider: KubernetesObjectsProviderFactory | undefined;
@@ -224,6 +226,7 @@ export const kubernetesPlugin = createBackendPlugin({
         permissions: coreServices.permissions,
         auth: coreServices.auth,
         httpAuth: coreServices.httpAuth,
+        actionsRegistry: actionsServiceRef.optional(),
       },
       async init({
         http,
@@ -234,6 +237,7 @@ export const kubernetesPlugin = createBackendPlugin({
         permissions,
         auth,
         httpAuth,
+        actionsRegistry,
       }) {
         // TODO: this could do with a cleanup and push some of this initalization somewhere else
         if (config.has('kubernetes')) {
@@ -256,6 +260,16 @@ export const kubernetesPlugin = createBackendPlugin({
             serviceLocator,
             objectsProvider,
           } = await initializer.init();
+
+          // Register Kubernetes resources with ActionsRegistry if available
+          if (actionsRegistry) {
+            createKubernetesResources({
+              actionsRegistry,
+              clusterSupplier,
+              objectsProvider,
+              catalog,
+            });
+          }
 
           const router = KubernetesRouter.create({
             logger,
