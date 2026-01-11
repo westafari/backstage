@@ -19,7 +19,7 @@ import {
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
 import { catalogServiceRef } from '@backstage/plugin-catalog-node';
-import { actionsServiceRef } from '@backstage/backend-plugin-api/alpha';
+import { actionsRegistryServiceRef } from '@backstage/backend-plugin-api/alpha';
 
 import {
   type AuthenticationStrategy,
@@ -226,7 +226,7 @@ export const kubernetesPlugin = createBackendPlugin({
         permissions: coreServices.permissions,
         auth: coreServices.auth,
         httpAuth: coreServices.httpAuth,
-        actionsRegistry: actionsServiceRef.optional(),
+        actionsRegistry: actionsRegistryServiceRef,
       },
       async init({
         http,
@@ -261,15 +261,13 @@ export const kubernetesPlugin = createBackendPlugin({
             objectsProvider,
           } = await initializer.init();
 
-          // Register Kubernetes resources with ActionsRegistry if available
-          if (actionsRegistry) {
-            createKubernetesResources({
-              actionsRegistry,
-              clusterSupplier,
-              objectsProvider,
-              catalog,
-            });
-          }
+          // Register Kubernetes resources with ActionsRegistry
+          createKubernetesResources({
+            actionsRegistry,
+            clusterSupplier,
+            objectsProvider,
+            catalog,
+          });
 
           const router = KubernetesRouter.create({
             logger,

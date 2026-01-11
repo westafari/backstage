@@ -72,46 +72,85 @@ export function createKubernetesResources(options: {
     description:
       'Get Kubernetes resources (pods, deployments, services, etc.) for a catalog entity',
     mimeType: 'application/json',
-    handler: async (uri, params, { credentials }) => {
-      const entityRef = parseEntityRef(params.entityRef);
-      const entity = await catalog.getEntityByRef(entityRef, { credentials });
-
-      if (!entity) {
-        throw new Error(`Entity not found: ${params.entityRef}`);
-      }
-
-      const response = await objectsProvider.getKubernetesObjectsByEntity(
-        {
-          entity,
-          auth: {},
-        },
-        { credentials },
-      );
-
-      // Simplify the response for AI consumption
-      const summary = response.items.map(clusterObjects => {
-        const resources: Record<string, any[]> = {};
-
-        clusterObjects.resources.forEach(resource => {
-          resources[resource.type] = resource.resources;
+    handler: async (uri, params, { credentials, logger }) => {
+      try {
+        logger.info(`Fetching Kubernetes workloads for ${params.entityRef}`);
+        const entityRef = parseEntityRef(params.entityRef);
+        const entity = await catalog.getEntityByRef(entityRef, {
+          credentials,
         });
 
-        return {
-          cluster: clusterObjects.cluster.name,
-          resources,
-          errors: clusterObjects.errors,
-        };
-      });
+        if (!entity) {
+          logger.warn(`Entity not found: ${params.entityRef}`);
+          return {
+            contents: [
+              {
+                uri: uri.href,
+                text: JSON.stringify(
+                  { error: `Entity not found: ${params.entityRef}` },
+                  null,
+                  2,
+                ),
+                mimeType: 'application/json',
+              },
+            ],
+          };
+        }
 
-      return {
-        contents: [
+        const response = await objectsProvider.getKubernetesObjectsByEntity(
           {
-            uri: uri.href,
-            text: JSON.stringify(summary, null, 2),
-            mimeType: 'application/json',
+            entity,
+            auth: {},
           },
-        ],
-      };
+          { credentials },
+        );
+
+        // Simplify the response for AI consumption
+        const summary = response.items.map(clusterObjects => {
+          const resources: Record<string, any[]> = {};
+
+          clusterObjects.resources.forEach(resource => {
+            resources[resource.type] = resource.resources;
+          });
+
+          return {
+            cluster: clusterObjects.cluster.name,
+            resources,
+            errors: clusterObjects.errors,
+          };
+        });
+
+        logger.info(
+          `Successfully fetched workloads for ${params.entityRef}: ${summary.length} clusters`,
+        );
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              text: JSON.stringify(summary, null, 2),
+              mimeType: 'application/json',
+            },
+          ],
+        };
+      } catch (error) {
+        logger.error(
+          `Error fetching Kubernetes workloads for ${params.entityRef}`,
+          error,
+        );
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              text: JSON.stringify(
+                { error: `Failed to fetch workloads: ${error.message}` },
+                null,
+                2,
+              ),
+              mimeType: 'application/json',
+            },
+          ],
+        };
+      }
     },
   } as ActionsRegistryResourceOptions);
 
@@ -122,63 +161,102 @@ export function createKubernetesResources(options: {
     title: 'Kubernetes Pod Status',
     description: 'Get pod status and health for a catalog entity',
     mimeType: 'application/json',
-    handler: async (uri, params, { credentials }) => {
-      const entityRef = parseEntityRef(params.entityRef);
-      const entity = await catalog.getEntityByRef(entityRef, { credentials });
+    handler: async (uri, params, { credentials, logger }) => {
+      try {
+        logger.info(`Fetching Kubernetes pods for ${params.entityRef}`);
+        const entityRef = parseEntityRef(params.entityRef);
+        const entity = await catalog.getEntityByRef(entityRef, {
+          credentials,
+        });
 
-      if (!entity) {
-        throw new Error(`Entity not found: ${params.entityRef}`);
-      }
-
-      const response = await objectsProvider.getKubernetesObjectsByEntity(
-        {
-          entity,
-          auth: {},
-        },
-        { credentials },
-      );
-
-      // Extract and summarize pod information
-      const podSummary = response.items.flatMap(clusterObjects => {
-        const podResource = clusterObjects.resources.find(
-          r => r.type === 'pods',
-        );
-        if (!podResource || podResource.type !== 'pods') {
-          return [];
+        if (!entity) {
+          logger.warn(`Entity not found: ${params.entityRef}`);
+          return {
+            contents: [
+              {
+                uri: uri.href,
+                text: JSON.stringify(
+                  { error: `Entity not found: ${params.entityRef}` },
+                  null,
+                  2,
+                ),
+                mimeType: 'application/json',
+              },
+            ],
+          };
         }
 
-        return podResource.resources.map(pod => ({
-          name: pod.metadata?.name,
-          namespace: pod.metadata?.namespace,
-          cluster: clusterObjects.cluster.name,
-          phase: pod.status?.phase,
-          conditions: pod.status?.conditions?.map(c => ({
-            type: c.type,
-            status: c.status,
-            reason: c.reason,
-            message: c.message,
-          })),
-          containers: pod.status?.containerStatuses?.map(c => ({
-            name: c.name,
-            ready: c.ready,
-            restartCount: c.restartCount,
-            state: c.state,
-          })),
-          hostIP: pod.status?.hostIP,
-          podIP: pod.status?.podIP,
-          startTime: pod.status?.startTime,
-        }));
-      });
-
-      return {
-        contents: [
+        const response = await objectsProvider.getKubernetesObjectsByEntity(
           {
-            uri: uri.href,
-            text: JSON.stringify(podSummary, null, 2),
-            mimeType: 'application/json',
+            entity,
+            auth: {},
           },
-        ],
-      };
+          { credentials },
+        );
+
+        // Extract and summarize pod information
+        const podSummary = response.items.flatMap(clusterObjects => {
+          const podResource = clusterObjects.resources.find(
+            r => r.type === 'pods',
+          );
+          if (!podResource || podResource.type !== 'pods') {
+            return [];
+          }
+
+          return podResource.resources.map(pod => ({
+            name: pod.metadata?.name,
+            namespace: pod.metadata?.namespace,
+            cluster: clusterObjects.cluster.name,
+            phase: pod.status?.phase,
+            conditions: pod.status?.conditions?.map(c => ({
+              type: c.type,
+              status: c.status,
+              reason: c.reason,
+              message: c.message,
+            })),
+            containers: pod.status?.containerStatuses?.map(c => ({
+              name: c.name,
+              ready: c.ready,
+              restartCount: c.restartCount,
+              state: c.state,
+            })),
+            hostIP: pod.status?.hostIP,
+            podIP: pod.status?.podIP,
+            startTime: pod.status?.startTime,
+          }));
+        });
+
+        logger.info(
+          `Successfully fetched pods for ${params.entityRef}: ${podSummary.length} pods`,
+        );
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              text: JSON.stringify(podSummary, null, 2),
+              mimeType: 'application/json',
+            },
+          ],
+        };
+      } catch (error) {
+        logger.error(
+          `Error fetching Kubernetes pods for ${params.entityRef}`,
+          error,
+        );
+        return {
+          contents: [
+            {
+              uri: uri.href,
+              text: JSON.stringify(
+                { error: `Failed to fetch pods: ${error.message}` },
+                null,
+                2,
+              ),
+              mimeType: 'application/json',
+            },
+          ],
+        };
+      }
     },
   } as ActionsRegistryResourceOptions);
 

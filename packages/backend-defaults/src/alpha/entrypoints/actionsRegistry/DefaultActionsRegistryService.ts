@@ -205,7 +205,9 @@ export class DefaultActionsRegistryService implements ActionsRegistryService {
           let params: Record<string, string> = {};
 
           for (const [, resource] of this.resources.entries()) {
-            const pattern = resource.uri.replace(/\{([^}]+)\}/g, '([^/]+)');
+            // Build regex pattern that allows parameters to contain slashes
+            // Use (.+?) for non-greedy matching to handle multiple parameters
+            const pattern = resource.uri.replace(/\{([^}]+)\}/g, '(.+?)');
             const regex = new RegExp(`^${pattern}$`);
             const match = uri.match(regex);
 
